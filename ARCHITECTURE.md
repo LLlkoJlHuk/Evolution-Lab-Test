@@ -2,6 +2,56 @@
 
 Схема для переноса на реальный бэкенд (Supabase/Postgres).
 
+## Структура таблиц для прогресса
+
+Нужны 3 основные таблицы:
+
+- `users` — юзеры
+- `lessons` — сами уроки (статика)
+- `user_lesson_progress` — связка юзера и статуса урока (many-to-many)
+
+Если потом понадобится что-то посложнее, можно добавить `lesson_content` для хранения контента или `lesson_dependencies` для нелинейной логики открытия уроков. Пока не надо.
+
+## Связь юзера и статуса
+
+Стандартная схема many-to-many через `user_lesson_progress`:
+
+```
+users <---- user_lesson_progress ----> lessons
+```
+
+В `user_lesson_progress` лежит:
+
+- `user_id` + `lesson_id` (UNIQUE вместе, чтоб не было дублей)
+- `status` — 'done' | 'active' | 'locked'
+- `completed_at` — когда закончил
+
+Индекс на `(user_id, lesson_id)` чтоб быстро тянуть прогресс конкретного юзера.
+
+## Как отдавать список на фронт
+
+Делаем LEFT JOIN одним запросом:
+
+```sql
+SELECT
+  l.id,
+  l.title,
+  l.order_index,
+  COALESCE(ulp.status, 'locked') as status,
+  ulp.completed_at
+FROM lessons l
+LEFT JOIN user_lesson_progress ulp
+  ON l.id = ulp.lesson_id
+  AND ulp.user_id = $1
+ORDER BY l.order_index ASC;
+```
+
+LEFT JOIN даст все уроки даже если у юзера нет записи в progress. COALESCE подставит 'locked' по дефолту. Получаем готовый массив за один запрос без N+1 проблем.
+
+Фронт сразу рендерит без доп обработки.
+
+---
+
 ## Таблицы
 
 ### users
